@@ -1,54 +1,63 @@
 # coding: utf-8
 import pandas as pd
 import numpy as np
+import itertools
 import re
 
-filename = 'dataset/poems.csv'
-data = pd.read_csv(filename, encoding='utf-8')
+# remove harakat
+harakat_re = r'(ٍ|َ|ُ|ِ|ّ|ْ|ً)'
+# remove every non arabic charachter that isnt a space or a newline
+nonarabic_nonspace_re = r'[^\u0621-\u064A \n]'
+# remove word extensions e.g. أهـــــــــلا
+extension_re = r'ـ'
+# normalize alef
+alef_re = r'(آ|أ|إ|آ)'
+# normalize waw_hamzah
+waw_hamzah_re = r'(ؤ)'
+# normalize yaa_hamzah
+yaa_hamzah_re = r'(ئ)'
+# normalize taa marbootah
+taa_marbootah_re = r'(ة)'
 
-nizar_poems = data[data.author == 'نزار قباني']
-poems = nizar_poems['poem_text']
-latin_re = re.compile('[a-zA-Z]') # remove bilingual poems
-raw_text = []
-for poem in poems:
-    try:
-        if(re.search(latin_re, poem)):
-            continue
-        raw_text.append(poem)
-    except:
-        print(poem)
-len(raw_text)
 
-raw_text[1337]
-
-def normalize_poem(poem):
-    # remove harakat
-    harakat_re = r'(ٍ|َ|ُ|ِ|ّ|ْ|ً)'
-    # remove every non arabic charachter that isnt a space, dot or new line
-    nonarabic_nonspace_re = r'[^\u0621-\u064A .\n]'
-    # remove word extensions e.g. أهـــــــــلا
-    extension_re = r'ـ'
-    # normalize alef
-    alef_re = r'(آ|أ|إ|آ)'
-    # normalize waw_hamzah
-    waw_hamzah_re = r'(ؤ)'
-    # normalize taa marbootah
-    taa_marbootah_re = r'(ة)'
-
-    poem_normalized = re.sub(extension_re, '', poem, flags=re.UNICODE)
-    poem_normalized = re.sub(harakat_re, '', poem_normalized, flags=re.UNICODE)
-    poem_normalized = re.sub(nonarabic_nonspace_re, ' ', poem_normalized, flags=re.UNICODE)
-    poem_normalized = re.sub(r'( ){2,}', r' ', poem_normalized, flags=re.UNICODE) # compact repetitive spaces
-    poem_normalized = re.sub(alef_re, 'ا', poem_normalized, flags=re.UNICODE)
-    poem_normalized = re.sub(waw_hamzah_re, 'و', poem_normalized, flags=re.UNICODE)
-    poem_normalized = re.sub(taa_marbootah_re, 'ه', poem_normalized, flags=re.UNICODE)
+def normalize(poem):
+    poem_normalized = re.sub(extension_re, '',
+                             poem, flags=re.UNICODE)
+    poem_normalized = re.sub(harakat_re, '',
+                             poem_normalized, flags=re.UNICODE)
+    poem_normalized = re.sub(nonarabic_nonspace_re, ' ',
+                             poem_normalized, flags=re.UNICODE)
+    # compact repetitive spaces
+    poem_normalized = re.sub(r'( ){2,}', r' ',
+                             poem_normalized, flags=re.UNICODE)
+    poem_normalized = re.sub(alef_re, 'ا',
+                             poem_normalized, flags=re.UNICODE)
+    poem_normalized = re.sub(waw_hamzah_re, 'و',
+                             poem_normalized, flags=re.UNICODE)
+    poem_normalized = re.sub(yaa_hamzah_re, 'ي',
+                             poem_normalized, flags=re.UNICODE)
+    poem_normalized = re.sub(taa_marbootah_re, 'ه',
+                             poem_normalized, flags=re.UNICODE)
     return poem_normalized
 
-test = normalize_poem(raw_text[1337])
-print(test.split('\n'))
 
-poems_normalized = np.empty(len(raw_text), dtype=object)
-for i,poem in enumerate(raw_text):
-    poems_normalized[i] = normalize_poem(poem)
-
-np.save('normalized_poem_text', poems_normalized)
+# %%
+if __name__ == '__main__':
+    filename = 'dataset/poems.csv'
+    data = pd.read_csv(filename, encoding='utf-8')
+    data = data.drop_duplicates()
+    len(data)
+    data = data[data.poem_text.notnull()]
+    poems = data.poem_text.apply(lambda p: normalize(p).strip())
+    poems = poems.drop_duplicates()
+    len(poems)
+    # poems = poems.apply(lambda x: x.split('\n'))
+    poems = poems.tolist()
+    verses = [p.split('\n') for p in poems]
+    poems = list(itertools.chain.from_iterable(verses))
+    strip = str.rstrip
+    raw_text = '\n'.join([line for line in poems if(1 < len(strip(line, '\n')) <=100)]).rstrip('\n')
+    # raw_text = re.sub(r'\s{2,}', '\n', raw_text, flags=re.UNICODE)
+    raw_text[:100]
+    with open('normalized_poem_text.txt', 'w', encoding='utf8') as f:
+        f.write(raw_text)
