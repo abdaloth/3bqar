@@ -8,12 +8,15 @@ from keras.layers import Dense, Dropout, LSTM
 from keras.callbacks import ModelCheckpoint, TensorBoard
 from keras.utils import np_utils
 
-poems = np.load('normalized_poem_text.npy')
-raw_text = '\n'.join(poems)
+with open('dataset/normalized_poem_text.txt', 'r', encoding='utf8') as f:
+    raw_text = '\n'.join(f.readlines())
+
+# reduce dataset to test models faster
+raw_text = raw_text[:150000]
 chars = sorted(list(set(raw_text)))
 char_to_int = dict((c, i) for i, c in enumerate(chars))
 # int_to_char = dict((i, c) for i, c in enumerate(chars))
-
+# %%
 n_chars = len(raw_text)
 n_vocab = len(chars)
 print("Number of characters in the datatset: ", n_chars)
@@ -52,16 +55,13 @@ X = np.load('input_sequences.npy')
 y = np.load('output_chars.npy')
 # %%
 
-# build the LSTM model
-
-
 def build_model(weights=''):
     model = Sequential()
-    model.add(LSTM(512, input_shape=(
-        X.shape[1], X.shape[2]), return_sequences=True))
-    model.add(Dropout(0.1))
-    model.add(LSTM(512))
-    model.add(Dropout(0.1))
+    model.add(LSTM(256, input_shape=(X.shape[1], X.shape[2]),
+                   return_sequences=True))
+    model.add(Dropout(0.3))
+    model.add(LSTM(256))
+    model.add(Dropout(0.3))
     model.add(Dense(y.shape[1], activation='softmax'))
 
     if weights:
@@ -74,15 +74,16 @@ def build_model(weights=''):
 
 model = build_model()
 print(model.summary())
-# define the checkpoint
-w_path = "weights/nizar_v1-weights-epoch-{epoch:02d}-loss-{loss:.4f}.hdf5"
-tBoard = TensorBoard(log_dir='./logs/nizar_v0', histogram_freq=0,
+
+w_path = "weights/reduced-weights-epoch-{epoch:02d}-loss-{loss:.4f}.hdf5"
+tBoard = TensorBoard(log_dir='./logs/lstm256_reduced', histogram_freq=0,
                      write_graph=True, write_images=False)
 checkpoint = ModelCheckpoint(w_path, monitor='loss', verbose=1,
                              save_best_only=True, save_weights_only=True, mode='min')
 
 # %%
-model.fit(X, y, epochs=50, batch_size=1024, callbacks=[checkpoint, tBoard])
+model.fit(X, y, epochs=20, batch_size=1024, callbacks=[checkpoint, tBoard], initial_epoch=0)
+model.fit(X, y, epochs=50, batch_size=1024, callbacks=[checkpoint, tBoard], initial_epoch=20)
 del X
 del y
 
@@ -95,7 +96,7 @@ int_to_char = dict((i, c) for i, c in enumerate(chars))
 
 filename = ''
 
-# model = build_model('weights/weights-epoch-04-loss-1.7161.hdf5')
+model = build_model('weights/weights-epoch-10-loss-1.8486.hdf5')
 
 from random import randint
 random_seed = randint(0, len(raw_text) - 42)
