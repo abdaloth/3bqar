@@ -1,6 +1,7 @@
 # coding: utf-8
 import pandas as pd
 import numpy as np
+from gensim.models import Word2Vec
 import itertools
 import re
 
@@ -41,6 +42,11 @@ def normalize(poem):
     return poem_normalized
 
 
+def create_w2v_model(verses):
+    verses = [s.split() for v in verses for s in v]
+    model = Word2Vec(verses,size=300, window=3,sg=1,workers=4,iter=25)
+    model.save('word2vec')
+
 # %%
 if __name__ == '__main__':
     filename = 'dataset/poems.csv'
@@ -54,6 +60,7 @@ if __name__ == '__main__':
     # poems = poems.apply(lambda x: x.split('\n'))
     poems = poems.tolist()
     verses = [p.split('\n') for p in poems]
+    # create_w2v_model(verses)
     poems = list(itertools.chain.from_iterable(verses))
     strip = str.rstrip
     raw_text = '\n'.join([line for line in poems if(1 < len(strip(line, '\n')) <=100)]).rstrip('\n')
