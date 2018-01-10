@@ -2,3 +2,4 @@
 dataset/*
 weights/*
 *.npy
+logs/*
