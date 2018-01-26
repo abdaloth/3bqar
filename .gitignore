@@ -1,5 +1,5 @@
 .ipynb_checkpoints/*
-dataset/*
+data/*
 weights/*
 *.npy
 logs/*
