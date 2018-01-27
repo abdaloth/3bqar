@@ -51,11 +51,12 @@ def normalize(poem):
 
 def create_w2v_model(poems):
     verses = [verse for poem in poems for verse in poem]
-    model = Word2Vec(verses, size=300, window=3, sg=1, workers=4, iter=25)
-    model.save('word2vec')
+    model = Word2Vec(verses, size=300, window=3, sg=1, workers=8, iter=25, max_vocab_size=1000)
+    model.save('w2v/word2vec')
 
 
 if __name__ == '__main__':
+    make_w2v = False
     filename = 'data/poems.csv'
     data = pd.read_csv(filename, encoding='utf-8')
     data = data.drop_duplicates()
@@ -64,7 +65,8 @@ if __name__ == '__main__':
     poems = data.poem_text.apply(lambda p: normalize(p))
     poems = poems.apply(lambda p: p.split('\n'))
     poems = poems.apply(lambda p: [v.split() for v in p])
-    # create_w2v_model(poems)
+    if(make_w2v):
+        create_w2v_model(poems)
     poems = poems.apply(lambda p: [v for v in p if 0< len(v) <= MAX_WORDS_PER_LINE])
     poems = poems.apply(lambda p: [[w for w in v if len(w)< MAX_CHAR_PER_WORD] for v in p])
     verses_l = list(chain.from_iterable(poems.tolist()))
