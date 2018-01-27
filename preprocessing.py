@@ -2,11 +2,12 @@
 import pandas as pd
 import numpy as np
 from gensim.models import Word2Vec
-import itertools
+from itertools import chain
 import re
 
 MAX_WORDS_PER_LINE = 15
 MAX_CHAR_PER_WORD = 15
+NA = '_'
 # remove harakat
 harakat_re = r'(ٍ|َ|ُ|ِ|ّ|ْ|ً)'
 # remove every non arabic charachter that isnt a whitespace
@@ -53,9 +54,9 @@ def create_w2v_model(poems):
     model = Word2Vec(verses, size=300, window=3, sg=1, workers=4, iter=25)
     model.save('word2vec')
 
-# %%
+
 if __name__ == '__main__':
-    filename = 'dataset/poems.csv'
+    filename = 'data/poems.csv'
     data = pd.read_csv(filename, encoding='utf-8')
     data = data.drop_duplicates()
     len(data)
@@ -64,9 +65,16 @@ if __name__ == '__main__':
     poems = poems.apply(lambda p: p.split('\n'))
     poems = poems.apply(lambda p: [v.split() for v in p])
     # create_w2v_model(poems)
-    poems = [p for p in poems if len(p) <= MAX_WORDS_PER_LINE]
-    poems = [[word for word in poem  if len(word)< MAX_CHAR_PER_WORD] for poem in poems]
-    poems = [' '.join(p) for p in poems]
-    raw_text = '\n'.join(poems)
-    with open('normalized_poem_text.txt', 'w', encoding='utf8') as f:
-        f.write(raw_text)
+    poems = poems.apply(lambda p: [v for v in p if 0< len(v) <= MAX_WORDS_PER_LINE])
+    poems = poems.apply(lambda p: [[w for w in v if len(w)< MAX_CHAR_PER_WORD] for v in p])
+    verses_l = list(chain.from_iterable(poems.tolist()))
+    verses = pd.DataFrame(data=verses_l)
+    verses = verses.fillna(NA)
+    verses.to_csv('data/verses.csv', encoding='utf-8', index=False)
+
+    word_vec = Word2Vec.load('w2v/word2vec').wv
+    i2w = dict(enumerate(word_vec.index2word))
+    w2i = dict([(v, k) for k, v in i2w.items()])
+    N_VOCAB = len(i2w)
+    verses_w2v = verses.applymap(lambda v: w2i.get(v, N_VOCAB))
+    verses_w2v.to_csv('data/verses_w2v.csv', encoding='utf-8', index=False)
