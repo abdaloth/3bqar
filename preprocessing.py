@@ -7,7 +7,7 @@ import re
 
 MAX_WORDS_PER_LINE = 15
 MAX_CHAR_PER_WORD = 15
-NA = '_'
+NA = '_END_'
 # remove harakat
 harakat_re = r'(ٍ|َ|ُ|ِ|ّ|ْ|ً)'
 # remove every non arabic charachter that isnt a whitespace
@@ -40,10 +40,10 @@ def normalize(poem):
                              poem_normalized, flags=re.UNICODE)
     poem_normalized = re.sub(alef_re, 'ا',
                              poem_normalized, flags=re.UNICODE)
-    # poem_normalized = re.sub(waw_hamzah_re, 'و',
-    #                          poem_normalized, flags=re.UNICODE)
-    # poem_normalized = re.sub(yaa_hamzah_re, 'ي',
-    #                          poem_normalized, flags=re.UNICODE)
+    poem_normalized = re.sub(waw_hamzah_re, 'و',
+                             poem_normalized, flags=re.UNICODE)
+    poem_normalized = re.sub(yaa_hamzah_re, 'ي',
+                             poem_normalized, flags=re.UNICODE)
     poem_normalized = re.sub(taa_marbootah_re, 'ه',
                              poem_normalized, flags=re.UNICODE)
     return poem_normalized
@@ -51,7 +51,7 @@ def normalize(poem):
 
 def create_w2v_model(poems):
     verses = [verse for poem in poems for verse in poem]
-    model = Word2Vec(verses, size=300, window=3, sg=1, workers=8, iter=25, max_vocab_size=1000)
+    model = Word2Vec(verses, size=256, window=3, sg=0, workers=8, iter=25, min_count=100)
     model.save('w2v/word2vec')
 
 
