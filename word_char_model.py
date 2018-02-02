@@ -1,15 +1,15 @@
-import pandas as pd
 import numpy as np
-from preprocessing import MAX_CHAR_PER_WORD
-from gensim.models import Word2Vec
+import pandas as pd
+from itertools import chain
+from preprocessing import MAX_CHAR_PER_WORD, Tokenizer, pad_sequences
 
 from keras import backend as K
-from keras.utils import to_categorical, Sequence
+from keras.utils import Sequence, to_categorical
 from keras.callbacks import ModelCheckpoint, TensorBoard
 
 from keras.models import Model
-from keras.layers import Flatten, Dense, Input, Dropout
-from keras.layers import CuDNNLSTM, Bidirectional, Embedding, GlobalMaxPooling1D, concatenate
+from keras.layers import Dense, Input, Dropout
+from keras.layers import CuDNNLSTM, Bidirectional, Embedding, Lambda, Add
 
 
 class PoemSequence(Sequence):
@@ -25,103 +25,87 @@ class PoemSequence(Sequence):
 
     def __getitem__(self, idx):
         batch_x = [self.x_c[(idx * self.batch_size):((idx + 1) * self.batch_size)
-                           ], self.x_w[(idx * self.batch_size):((idx + 1) * self.batch_size)]]
+                            ], self.x_w[(idx * self.batch_size):((idx + 1) * self.batch_size)]]
         batch_y = self.y[(idx * self.batch_size):((idx + 1) * self.batch_size)]
 
         return batch_x, to_categorical(batch_y, num_classes=self.num_classes)
 
 
-def pad_w(w):
-    return w + [c2i[UNKNOWN]] * (MAX_CHAR_PER_WORD - len(w))
-
-
-def get_embedding_matrix():
-    n, d = word_vec.syn0.shape
-    embedding_matrix = np.zeros((n + 1, d))
-    embedding_matrix[:-1] = word_vec.syn0
-    return embedding_matrix
-
+with open('data/raw_text.txt', encoding='utf-8') as f:
+    verse_list = [v.strip() for v in f.readlines()]
+    raw_text = ' '.join(verse_list)
+    word_list = raw_text.split()
 
 UNKNOWN = '_'
-# load word vector and create index2value and value2index dicts
-word_vec = Word2Vec.load('w2v/word2vec').wv
-i2w = dict(enumerate(word_vec.index2word))
-w2i = dict([(v, k) for k, v in i2w.items()])
-CLASS_NUM = len(i2w) + 1
-# add UNKNOWN to the dictionary for unknown chars
-i2c = dict(enumerate(sorted(set(' '.join(word_vec.index2word) + UNKNOWN))))
-c2i = dict([(v, k) for k, v in i2c.items()])
+G = 0.2
+seq_length = 1  # play with this number
+step_size = 1  # and this number
 
-# load verses and flatten into one continuous array
-X_w = pd.read_csv('data/verses_w2v.csv', encoding='utf-8').as_matrix()
-X_w_flat = X_w.flatten()
+word_tokenizer = Tokenizer(oov_token=UNKNOWN)
+word_tokenizer.fit_on_texts(verse_list)
+tokenized_words = word_tokenizer.texts_to_sequences(word_list)
 
-# load word-chars and flatten into one continuous array
-X_ch = pd.read_csv('data/verses.csv', encoding='utf-8')
-X_ch = X_ch.applymap(lambda v: pad_w([c2i.get(w, c2i[UNKNOWN]) for w in v]))
-X_ch = np.array(X_ch.values.tolist())
-X_ch_flat = X_ch.reshape((X_ch.shape[0] * X_ch.shape[1], X_ch.shape[2]))
+char_tokenizer = Tokenizer(char_level=True, oov_token=UNKNOWN)
+char_tokenizer.fit_on_texts(verse_list)
+tokenized_chars = char_tokenizer.texts_to_sequences(word_list)
 
-seq_length = 8  # play with this number
-step_size = 3  # and this number
+X_w = np.array(list(chain.from_iterable(tokenized_words)))
+X_ch = pad_sequences(tokenized_chars, maxlen=MAX_CHAR_PER_WORD)
 
-words_in = []
-chars_in = []
-words_out = []
-for i in range(0, X_w_flat.shape[0] - seq_length, step_size):
-    words_in.append(X_w_flat[i:i + seq_length])
-    chars_in.append(X_ch_flat[i:i + seq_length])
-    words_out.append(X_w_flat[i + seq_length])
-
-words_in = np.stack(words_in)
-chars_in = np.stack(chars_in)
-
-
+N_VOCAB = len(word_tokenizer.word_index)
+X_ch.shape
+y = X_w[1:]
+X_w = np.reshape(X_w[:-1], (X_w.shape[0] - 1, seq_length))
+X_ch = np.reshape(X_ch[:-1], (X_ch.shape[0] - 1, seq_length, X_ch.shape[1]))
 #%%
 K.clear_session()
 
-char_input = Input(shape=(seq_length, MAX_CHAR_PER_WORD,), name='chars_in')
+char_input = Input(shape=(seq_length, X_ch.shape[2]), name='chars_in')
 char_embed = Bidirectional(CuDNNLSTM(256, return_sequences=True), merge_mode='sum')(char_input)
 
 word_input = Input(shape=(seq_length,), name='words_in')
-embed = get_embedding_matrix()
-word_embed = Embedding(output_dim=256, input_dim=embed.shape[0],
-                       weights=[embed], trainable=False)(word_input)
-concat = concatenate([char_embed, word_embed], axis=-1)
-x = CuDNNLSTM(256, return_sequences=True, name='lstm_word_1')(concat)
+word_embed = Embedding(input_dim=N_VOCAB, output_dim=256)(word_input)
+
+mul_1 = Lambda(lambda x: x * G)(char_embed)
+mul_2 = Lambda(lambda x: x * (1 - G))(word_embed)
+merged = Add()([mul_1, mul_2])
+
+x = CuDNNLSTM(256, return_sequences=True, name='lstm_word_1')(merged)
 x = Dropout(.5)(x)
 x = CuDNNLSTM(256, name='lstm_word_2')(x)
 x = Dropout(.5)(x)
-next_word = Dense(CLASS_NUM, activation='softmax')(x)
+next_word = Dense(N_VOCAB, activation='softmax')(x)
 model = Model(inputs=[char_input, word_input], outputs=next_word)
 model.compile(optimizer='adam', loss='categorical_crossentropy')
 model.summary()
 #%%
 tb = TensorBoard(log_dir='logs/word_char'.format(model.name), histogram_freq=0,
                      write_graph=True, write_images=False)
-mc = ModelCheckpoint('weights/word_char0-epoch-{epoch:02d}-loss-{loss:.4f}.hdf5',
+mc = ModelCheckpoint('weights/word_char-epoch-{epoch:02d}-loss-{loss:.4f}.hdf5',
                              save_best_only=True, save_weights_only=True, mode='min',
                              monitor='loss', verbose=1)
 
-generator = PoemSequence(inputs=[chars_in, words_in], output=words_out,
-                         batch_size=2048, num_classes=CLASS_NUM)
-model.fit_generator(generator=generator, callbacks=[tb, mc], epochs=25)
+generator = PoemSequence(inputs=[X_ch, X_w], output=y,
+                         batch_size=256, num_classes=N_VOCAB)
+model.fit_generator(generator=generator, epochs=1)
 #%%
-##GENERATE TEXT
+# GENERATE TEXT
 from random import randint
 idx = randint(0, len(words_in))
-w_in = words_in[idx:idx+1]
+w_in = words_in[idx:idx + 1]
 w_in.shape
 sequence = w_in
 gen_text = ''
 # generate words
 for i in range(30):
     x_w = sequence
-    x_c = [pad_w([c2i.get(w, c2i[UNKNOWN]) for c in i2w.get(i, '_')]) for w in x_w[0]]
+    x_c = [pad_w([c2i.get(w, c2i[UNKNOWN]) for c in i2w.get(i, '_')])
+           for w in x_w[0]]
     x_c = np.array(x_c).reshape((1, 8, 15))
     x_w = np.array(x_w)
     prediction = model.predict([x_c, x_w], verbose=0)
-    index = np.argmax(prediction[0][:-1])  # returns the index of the predicted word
+    # returns the index of the predicted word
+    index = np.argmax(prediction[0][:-1])
     gen_text += ' ' + i2w.get(index, '_')
     sequence[0][:-1] = sequence[0][1:]
     sequence[0][-1] = index
