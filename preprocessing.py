@@ -1,13 +1,12 @@
 # coding: utf-8
-import pandas as pd
-import numpy as np
-from gensim.models import Word2Vec
-from itertools import chain
 import re
-
+import numpy as np
+import pandas as pd
+from itertools import chain
+from keras.preprocessing.text import Tokenizer
+from keras.preprocessing.sequence import pad_sequences
 MAX_WORDS_PER_LINE = 15
 MAX_CHAR_PER_WORD = 15
-NA = '_END_'
 # remove harakat
 harakat_re = r'(ٍ|َ|ُ|ِ|ّ|ْ|ً)'
 # remove every non arabic charachter that isnt a whitespace
@@ -26,7 +25,7 @@ yaa_hamzah_re = r'(ئ)'
 taa_marbootah_re = r'(ة)'
 
 
-def normalize(poem):
+def clean_and_normalize(poem):
     poem_normalized = re.sub(extension_re, '',
                              poem, flags=re.UNICODE)
     poem_normalized = re.sub(harakat_re, '',
@@ -40,43 +39,27 @@ def normalize(poem):
                              poem_normalized, flags=re.UNICODE)
     poem_normalized = re.sub(alef_re, 'ا',
                              poem_normalized, flags=re.UNICODE)
-    poem_normalized = re.sub(waw_hamzah_re, 'و',
-                             poem_normalized, flags=re.UNICODE)
-    poem_normalized = re.sub(yaa_hamzah_re, 'ي',
-                             poem_normalized, flags=re.UNICODE)
+    # poem_normalized = re.sub(waw_hamzah_re, 'و',
+    #                          poem_normalized, flags=re.UNICODE)
+    # poem_normalized = re.sub(yaa_hamzah_re, 'ي',
+    #                          poem_normalized, flags=re.UNICODE)
     poem_normalized = re.sub(taa_marbootah_re, 'ه',
                              poem_normalized, flags=re.UNICODE)
     return poem_normalized
 
 
-def create_w2v_model(poems):
-    verses = [verse for poem in poems for verse in poem]
-    model = Word2Vec(verses, size=256, window=3, sg=0, workers=8, iter=25, min_count=100)
-    model.save('w2v/word2vec')
-
-
 if __name__ == '__main__':
-    make_w2v = False
     filename = 'data/poems.csv'
     data = pd.read_csv(filename, encoding='utf-8')
     data = data.drop_duplicates()
     len(data)
     data = data[data.poem_text.notnull()]
-    poems = data.poem_text.apply(lambda p: normalize(p))
-    poems = poems.apply(lambda p: p.split('\n'))
-    poems = poems.apply(lambda p: [v.split() for v in p])
-    if(make_w2v):
-        create_w2v_model(poems)
-    poems = poems.apply(lambda p: [v for v in p if 0< len(v) <= MAX_WORDS_PER_LINE])
-    poems = poems.apply(lambda p: [[w for w in v if len(w)< MAX_CHAR_PER_WORD] for v in p])
-    verses_l = list(chain.from_iterable(poems.tolist()))
-    verses = pd.DataFrame(data=verses_l)
-    verses = verses.fillna(NA)
-    verses.to_csv('data/verses.csv', encoding='utf-8', index=False)
-
-    word_vec = Word2Vec.load('w2v/word2vec').wv
-    i2w = dict(enumerate(word_vec.index2word))
-    w2i = dict([(v, k) for k, v in i2w.items()])
-    N_VOCAB = len(i2w)
-    verses_w2v = verses.applymap(lambda v: w2i.get(v, N_VOCAB))
-    verses_w2v.to_csv('data/verses_w2v.csv', encoding='utf-8', index=False)
+    poems = data.poem_text.apply(lambda p: clean_and_normalize(p))
+    poems = poems.tolist()
+    poems = [p.split('\n') for p in poems]
+    poems = [[v for v in p if 0< len(v.split()) <= MAX_WORDS_PER_LINE] for p in poems]
+    poems = [[' '.join([w for w in v.split() if 0<len(w)< MAX_CHAR_PER_WORD]) for v in p] for p in poems]
+    verses = list(chain.from_iterable(poems))
+    with open('data/raw_text.txt', 'w', encoding='utf8') as f:
+        raw_text = '\n'.join(verses)
+        f.write(raw_text)
