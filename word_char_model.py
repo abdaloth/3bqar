@@ -8,7 +8,7 @@ from keras.utils import to_categorical, Sequence
 from keras.callbacks import ModelCheckpoint, TensorBoard
 
 from keras.models import Model
-from keras.layers import Flatten, Dense, Input
+from keras.layers import Flatten, Dense, Input, Dropout
 from keras.layers import CuDNNLSTM, Bidirectional, Embedding, GlobalMaxPooling1D, concatenate
 
 
@@ -88,21 +88,43 @@ embed = get_embedding_matrix()
 word_embed = Embedding(output_dim=256, input_dim=embed.shape[0],
                        weights=[embed], trainable=False)(word_input)
 concat = concatenate([char_embed, word_embed], axis=-1)
-maxpool = GlobalMaxPooling1D()(concat)
-dense = Dense(256, activation='relu')(maxpool)
-next_word = Dense(CLASS_NUM, activation='softmax')(dense)
+x = CuDNNLSTM(256, return_sequences=True, name='lstm_word_1')(concat)
+x = Dropout(.5)(x)
+x = CuDNNLSTM(256, name='lstm_word_2')(x)
+x = Dropout(.5)(x)
+next_word = Dense(CLASS_NUM, activation='softmax')(x)
 model = Model(inputs=[char_input, word_input], outputs=next_word)
 model.compile(optimizer='adam', loss='categorical_crossentropy')
 model.summary()
 #%%
-tb = TensorBoard(log_dir='logs/word_char0'.format(model.name), histogram_freq=0,
+tb = TensorBoard(log_dir='logs/word_char'.format(model.name), histogram_freq=0,
                      write_graph=True, write_images=False)
 mc = ModelCheckpoint('weights/word_char0-epoch-{epoch:02d}-loss-{loss:.4f}.hdf5',
                              save_best_only=True, save_weights_only=True, mode='min',
                              monitor='loss', verbose=1)
 
 generator = PoemSequence(inputs=[chars_in, words_in], output=words_out,
-                         batch_size=512, num_classes=CLASS_NUM)
-model.fit_generator(generator=generator, callbacks=[tb, mc], epochs=1)
+                         batch_size=2048, num_classes=CLASS_NUM)
+model.fit_generator(generator=generator, callbacks=[tb, mc], epochs=25)
 #%%
 ##GENERATE TEXT
+from random import randint
+idx = randint(0, len(words_in))
+w_in = words_in[idx:idx+1]
+w_in.shape
+sequence = w_in
+gen_text = ''
+# generate words
+for i in range(30):
+    x_w = sequence
+    x_c = [pad_w([c2i.get(w, c2i[UNKNOWN]) for c in i2w.get(i, '_')]) for w in x_w[0]]
+    x_c = np.array(x_c).reshape((1, 8, 15))
+    x_w = np.array(x_w)
+    prediction = model.predict([x_c, x_w], verbose=0)
+    index = np.argmax(prediction[0][:-1])  # returns the index of the predicted word
+    gen_text += ' ' + i2w.get(index, '_')
+    sequence[0][:-1] = sequence[0][1:]
+    sequence[0][-1] = index
+
+print(gen_text)
+print('Done.')
