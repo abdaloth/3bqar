@@ -37,23 +37,22 @@ with open('data/raw_text.txt', encoding='utf-8') as f:
     word_list = raw_text.split()
 
 UNKNOWN = '_'
+N_VOCAB = 20000
 G = 0.2
 seq_length = 1  # play with this number
-step_size = 1  # and this number
 
-word_tokenizer = Tokenizer(oov_token=UNKNOWN)
+word_tokenizer = Tokenizer(num_words=N_VOCAB, oov_token=UNKNOWN)
 word_tokenizer.fit_on_texts(verse_list)
 tokenized_words = word_tokenizer.texts_to_sequences(word_list)
+tokenized_words = [w for w in tokenized_words if len(w)>0]
 
 char_tokenizer = Tokenizer(char_level=True, oov_token=UNKNOWN)
-char_tokenizer.fit_on_texts(verse_list)
-tokenized_chars = char_tokenizer.texts_to_sequences(word_list)
+char_tokenizer.fit_on_texts(tokenized_words)
+tokenized_chars = char_tokenizer.texts_to_sequences(tokenized_words)
 
 X_w = np.array(list(chain.from_iterable(tokenized_words)))
 X_ch = pad_sequences(tokenized_chars, maxlen=MAX_CHAR_PER_WORD)
 
-N_VOCAB = len(word_tokenizer.word_index)
-X_ch.shape
 y = X_w[1:]
 X_w = np.reshape(X_w[:-1], (X_w.shape[0] - 1, seq_length))
 X_ch = np.reshape(X_ch[:-1], (X_ch.shape[0] - 1, seq_length, X_ch.shape[1]))
@@ -86,7 +85,7 @@ mc = ModelCheckpoint('weights/word_char-epoch-{epoch:02d}-loss-{loss:.4f}.hdf5',
                              monitor='loss', verbose=1)
 
 generator = PoemSequence(inputs=[X_ch, X_w], output=y,
-                         batch_size=256, num_classes=N_VOCAB)
+                         batch_size=128, num_classes=N_VOCAB)
 model.fit_generator(generator=generator, epochs=1)
 #%%
 # GENERATE TEXT
