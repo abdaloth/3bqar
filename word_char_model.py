@@ -1,7 +1,8 @@
 import numpy as np
 import pandas as pd
 from itertools import chain
-from preprocessing import MAX_CHAR_PER_WORD, Tokenizer, pad_sequences
+from keras.preprocessing.text import Tokenizer
+from keras.preprocessing.sequence import pad_sequences
 
 from keras import backend as K
 from keras.utils import Sequence, to_categorical

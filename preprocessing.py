@@ -3,8 +3,7 @@ import re
 import numpy as np
 import pandas as pd
 from itertools import chain
-from keras.preprocessing.text import Tokenizer
-from keras.preprocessing.sequence import pad_sequences
+
 MAX_WORDS_PER_LINE = 15
 MAX_CHAR_PER_WORD = 15
 # remove harakat
