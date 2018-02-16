@@ -41,7 +41,7 @@ UNKNOWN = '_' # token for out-of-vocab
 N_VOCAB = 20000
 G = 0.2 # gating value
 seq_length = 1  # play with this number
-
+MAX_CHAR_PER_WORD = 2
 # tokenize words into indices
 word_tokenizer = Tokenizer(num_words=N_VOCAB, oov_token=UNKNOWN)
 word_tokenizer.fit_on_texts(verse_list)
@@ -94,7 +94,7 @@ mc = ModelCheckpoint('weights/word_char-epoch-{epoch:02d}-loss-{loss:.4f}.hdf5',
 
 generator = PoemSequence(inputs=[X_ch, X_w], output=y,
                          batch_size=1024, num_classes=N_VOCAB)
-model.fit_generator(generator=generator, epochs=100, callbacks=[tb, mc])
+model.fit_generator(generator=generator, epochs=1, callbacks=[tb, mc])
 #%%
 w2i = dict(word_tokenizer.word_index)
 i2w = {v:k for k,v in w2i.items()}
