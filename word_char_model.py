@@ -1,17 +1,20 @@
 import numpy as np
 import pandas as pd
 from itertools import chain
-from keras.preprocessing.text import Tokenizer
-from keras.preprocessing.sequence import pad_sequences
+from gensim.models import Word2Vec
 
 from keras import backend as K
 from keras.utils import Sequence, to_categorical
+from keras.preprocessing.sequence import pad_sequences
 from keras.callbacks import ModelCheckpoint, TensorBoard
 
 from keras.models import Model
 from keras.layers import Dense, Input, Dropout
 from keras.layers import CuDNNLSTM, Bidirectional, Embedding, Lambda, Add
 
+with open('data/raw_text.txt', encoding='utf-8') as f:
+    verses = [v.strip() for v in f.readlines()]
+    word_list = ' '.join(verses).split()
 
 class PoemSequence(Sequence):
     """turns the poem inputs into a per-batch sequence generator"""
@@ -32,37 +35,60 @@ class PoemSequence(Sequence):
         return batch_x, to_categorical(batch_y, num_classes=self.num_classes)
 
 
-with open('data/raw_text.txt', encoding='utf-8') as f:
-    verse_list = [v.strip() for v in f.readlines()]
-    raw_text = ' '.join(verse_list)
-    word_list = raw_text.split()
+def word2index(word, w2v):
+    return w2v.vocab[word].index + 1 if word in w2v.vocab else 0
+
+
+def index2word(index, w2v):
+    return w2v.index2word[index - 1]
+
+
+def get_word_vector():
+    # load or create and save word2vec model
+    try:
+        w2v = Word2Vec.load('w2v/w2v_model').wv
+    except FileNotFoundError:
+        verse_list = [v.split() for v in verses]
+        w2v = Word2Vec(verse_list, window=3, size=256,
+                       sg=1, iter=30, workers=8)
+        w2v.save('w2v/w2v_model')
+        w2v = Word2Vec.load('w2v/w2v_model').wv
+    return w2v
+
+
+w2v = get_word_vector()
 
 UNKNOWN = '_' # token for out-of-vocab
-N_VOCAB = 20000
-G = 0.2 # gating value
+N_VOCAB = len(w2v.vocab)
+G = 0.4 # gating value
 seq_length = 1  # play with this number
+# maximum length of chars to consider
+# I'm using only the last 2 to preserve the rhyme
 MAX_CHAR_PER_WORD = 2
 # tokenize words into indices
-word_tokenizer = Tokenizer(num_words=N_VOCAB, oov_token=UNKNOWN)
-word_tokenizer.fit_on_texts(verse_list)
-tokenized_words = word_tokenizer.texts_to_sequences(word_list)
+tokenized_words = [word2index(w, w2v) for w in word_list]
 
 # tokenize words into char index list
-char_tokenizer = Tokenizer(char_level=True, oov_token=UNKNOWN)
-char_tokenizer.fit_on_texts(word_list)
-tokenized_chars = char_tokenizer.texts_to_sequences(word_list)
+chars = sorted(set(UNKNOWN.join(verses)))
+c2i = {c: i for i, c in enumerate(chars)}
+i2c = {i: c for i, c in enumerate(chars)}
+tokenized_chars = [[c2i[c] for c in index2word(w, w2v)] for w in tokenized_words]
 
-# drop empty words
-tokenized_chars = [c for c,w in zip(tokenized_chars, tokenized_words) if len(w)>0]
-tokenized_words = [w for w in tokenized_words if len(w)>0]
 
 # prepare inputs and outputs for model
-X_w = np.array(list(chain.from_iterable(tokenized_words)))
+X_w = np.array(tokenized_words)
 y = X_w[1:]
 X_w = np.reshape(X_w[:-1], (X_w.shape[0] - 1, seq_length))
 
 X_ch = pad_sequences(tokenized_chars, maxlen=MAX_CHAR_PER_WORD)
 X_ch = np.reshape(X_ch[:-1], (X_ch.shape[0] - 1, seq_length, X_ch.shape[1]))
+#%%
+# create embedding_matrix
+w2v_matrix = w2v.syn0
+embedding_matrix = np.zeros((w2v_matrix.shape[0] + 1, w2v_matrix.shape[1]))
+embedding_matrix[1:] = w2v_matrix
+embedding_matrix[0] = np.mean(w2v_matrix, axis=0)
+
 #%%
 K.clear_session()
 # build model
@@ -70,7 +96,11 @@ char_input = Input(shape=(seq_length, X_ch.shape[2]), name='chars_in')
 char_embed = Bidirectional(CuDNNLSTM(256, return_sequences=True), merge_mode='sum')(char_input)
 
 word_input = Input(shape=(seq_length,), name='words_in')
-word_embed = Embedding(input_dim=N_VOCAB, output_dim=256)(word_input)
+word_embed = Embedding(embedding_matrix.shape[0],
+                       embedding_matrix.shape[1],
+                       weights=[embedding_matrix],
+                       input_length=seq_length,
+                       trainable=False)(word_input)
 
 #NOTE consider doing this dynammically ( with a learnable G param)
 mul_1 = Lambda(lambda x: x * G)(char_embed)
@@ -96,10 +126,6 @@ generator = PoemSequence(inputs=[X_ch, X_w], output=y,
                          batch_size=1024, num_classes=N_VOCAB)
 model.fit_generator(generator=generator, epochs=1, callbacks=[tb, mc])
 #%%
-w2i = dict(word_tokenizer.word_index)
-i2w = {v:k for k,v in w2i.items()}
-c2i = dict(char_tokenizer.word_index)
-i2c = {v:k for k,v in c2i.items()}
 
 def sample(preds, temperature=1.0):
     # helper function to sample an index from a probability array
@@ -130,9 +156,9 @@ for tmp in [.3, .5, 1., 1.2, 1.7]:
         prediction = model.predict([x_c, x_w], verbose=0)[0]
         # returns the index of the predicted word
         index = sample(prediction, tmp)
-        gen_text += ' ' + i2w.get(index, '_')
+        gen_text += ' ' + word2index(index)
         x_w[0][0] = index
-        char_idx = [c2i[c] for c in i2w[index]]
+        char_idx = [c2i[c] for c in index2word(index)]
         x_c[0] = pad_sequences([char_idx], maxlen=MAX_CHAR_PER_WORD)
         sequence = x_c, x_w
 
