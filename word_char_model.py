@@ -11,11 +11,12 @@ from keras.layers import CuDNNLSTM, Bidirectional, Embedding, Lambda, Add
 
 
 w2v = get_word_vector()
-
 UNKNOWN = '_'  # token for out-of-vocab
 N_VOCAB = len(w2v.vocab) + 1
 G = 0.4  # gating value
-seq_length = 1  # play with this number
+# length of input sequences (experiment with this number)
+seq_length = int(np.mean([len(v.split()) for v in verses]))
+stride_offset = 0 # and this number
 # maximum length of chars to consider
 # I'm using only the last 2 to preserve the rhyme
 MAX_CHAR_PER_WORD = 2
@@ -26,17 +27,21 @@ tokenized_words = [word2index(w, w2v) for w in word_list]
 chars = sorted(set(UNKNOWN.join(verses)))
 c2i = {c: i for i, c in enumerate(chars)}
 i2c = {i: c for i, c in enumerate(chars)}
-tokenized_chars = [[c2i[c]
-                    for c in index2word(w, w2v)] for w in tokenized_words]
-
+tokenized_chars = [[c2i[c] for c in index2word(w, w2v)] for w in tokenized_words]
 
 # prepare inputs and outputs for model
-X_w = np.array(tokenized_words)
-y = X_w[1:]
-X_w = np.reshape(X_w[:-1], (X_w.shape[0] - 1, seq_length))
+idx = np.arange(seq_length, len(word_list), seq_length + stride_offset)
+words_in = np.split(tokenized_words, idx)
+padded_chars = pad_sequences(tokenized_chars, maxlen=MAX_CHAR_PER_WORD)
+chars_in = np.split(padded_chars, idx)
+if(not len(words_in[-1]) == seq_length):
+    words_in = words_in[:-1]
+    chars_in = chars_in[:-1]
 
-X_ch = pad_sequences(tokenized_chars, maxlen=MAX_CHAR_PER_WORD)
-X_ch = np.reshape(X_ch[:-1], (X_ch.shape[0] - 1, seq_length, X_ch.shape[1]))
+words_in = np.stack(words_in)
+X_ch = np.stack(chars_in)
+X_w = np.reshape(words_in, (words_in.shape[0], seq_length))
+y = np.array(tokenized_words)[idx]
 #%%
 # create embedding_matrix
 w2v_matrix = w2v.syn0
@@ -72,24 +77,23 @@ model = Model(inputs=[char_input, word_input], outputs=next_word)
 model.compile(optimizer='adam', loss='categorical_crossentropy')
 model.summary()
 #%%
-tb = TensorBoard(log_dir='logs/word_char'.format(model.name), histogram_freq=0,
+tb = TensorBoard(log_dir='logs/word_char_v2', histogram_freq=0,
                  write_graph=True, write_images=False)
-mc = ModelCheckpoint('weights/word_char-epoch-{epoch:02d}-loss-{loss:.4f}.hdf5',
+mc = ModelCheckpoint('weights/word_char_v2-epoch-{epoch:02d}-loss-{loss:.4f}.hdf5',
                      save_best_only=True, save_weights_only=True, mode='min',
                      monitor='loss', verbose=1)
 
 generator = PoemSequence(inputs=[X_ch, X_w], output=y,
                          batch_size=1024, num_classes=N_VOCAB)
-model.fit_generator(generator=generator, epochs=1, callbacks=[tb, mc])
-
+model.fit_generator(generator=generator, epochs=42, callbacks=[tb, mc])
 #%%
 # GENERATE TEXT
 from random import randint
 for tmp in [.3, .5, 1., 1.2, 1.7]:
     print(f'temperature = {tmp}')
     idx = randint(0, len(X_w))
-    w_in = X_w[idx:idx + 1]
-    c_in = X_ch[idx:idx + 1]
+    w_in = X_w[idx]
+    c_in = X_ch[idx]
     sequence = c_in, w_in
     gen_text = ''
     # generate words
@@ -98,13 +102,18 @@ for tmp in [.3, .5, 1., 1.2, 1.7]:
         if(i % 8 == 0):
             gen_text += '\n'
         x_c, x_w = sequence
+        x_w = np.reshape(x_w, (1, seq_length,))
+        x_c = np.reshape(x_c, (1, seq_length, MAX_CHAR_PER_WORD))
         prediction = model.predict([x_c, x_w], verbose=0)[0]
         # returns the index of the predicted word
         index = sample(prediction, tmp)
-        gen_text += ' ' + word2index(index)
-        x_w[0][0] = index
-        char_idx = [c2i[c] for c in index2word(index)]
-        x_c[0] = pad_sequences([char_idx], maxlen=MAX_CHAR_PER_WORD)
+        gen_text += ' ' + index2word(index, w2v)
+        x_w[:-1] = x_w[1:]
+        x_w[-1] = index
+        char_idx = [c2i[c] for c in index2word(index, w2v)]
+        x_c[:-1] = x_c[1:]
+        x_c.shape
+        x_c[-1] = pad_sequences([char_idx], maxlen=MAX_CHAR_PER_WORD)
         sequence = x_c, x_w
 
     print(gen_text)
