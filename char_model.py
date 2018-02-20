@@ -59,7 +59,7 @@ mc = ModelCheckpoint('weights/char-epoch-{epoch:02d}-loss-{loss:.4f}.hdf5',
 model.fit(X, y, epochs=600, batch_size=1024, callbacks=[tb, mc])
 #%%
 # GENERATE TEXT
-for tmp in [.1, .3, .5, .7, 1.2]:
+for tmp in [.1, .3, .4, .5, .6, .7, .8, .9, 1., 1.2]:
     print(f'temperature = {tmp}')
     idx = np.random.randint(0, X.shape[0] - seq_length)
     sequence = chars_in[idx]

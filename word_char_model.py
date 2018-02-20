@@ -89,7 +89,7 @@ model.fit_generator(generator=generator, epochs=42, callbacks=[tb, mc])
 #%%
 # GENERATE TEXT
 from random import randint
-for tmp in [.3, .5, 1., 1.2, 1.7]:
+for tmp in [.9, 1., 1.2, 1.5, 1.7, 1.9, 2.]:
     print(f'temperature = {tmp}')
     idx = randint(0, len(X_w))
     w_in = X_w[idx]
@@ -97,7 +97,6 @@ for tmp in [.3, .5, 1., 1.2, 1.7]:
     sequence = c_in, w_in
     gen_text = ''
     # generate words
-    # NOTE consider adding temperature
     for i in range(80):
         if(i % 8 == 0):
             gen_text += '\n'
