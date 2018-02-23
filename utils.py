@@ -3,11 +3,6 @@ from gensim.models import Word2Vec
 from keras.utils import Sequence, to_categorical
 
 
-with open('data/raw_text.txt', encoding='utf-8') as f:
-    verses = [v.strip() for v in f.readlines()]
-    word_list = ' '.join(verses).split()
-
-
 class PoemSequence(Sequence):
     """turns the poem inputs into a per-batch sequence generator"""
 
@@ -36,7 +31,7 @@ def index2word(index, w2v):
     return w2v.index2word[index - 1]
 
 
-def get_word_vector():
+def get_word_vector(verses):
     # load or create and save word2vec model
     try:
         w2v = Word2Vec.load('w2v/w2v_model').wv
