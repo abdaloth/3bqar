@@ -35,9 +35,11 @@ y = to_categorical(char_out, num_classes=len(chars))
 
 def build_char_model(weights_path=''):
     inps = Input(shape=(X.shape[1], X.shape[2]))
-    x = CuDNNLSTM(128, return_sequences=True)(inps)
+    x = CuDNNLSTM(256, return_sequences=True)(inps)
     x = Dropout(0.5)(x)
-    x = CuDNNLSTM(128)(x)
+    x = CuDNNLSTM(256, return_sequences=True)(x)
+    x = Dropout(0.5)(x)
+    x = CuDNNLSTM(256)(x)
     x = Dropout(0.5)(x)
     x = Dense(y.shape[1], activation='softmax')(x)
     model = Model(inps, x)
@@ -51,9 +53,9 @@ K.clear_session()
 model = build_char_model()
 model.summary()
 #%%
-tb = TensorBoard(log_dir='logs/char_model_v1', histogram_freq=0,
+tb = TensorBoard(log_dir='logs/char_model_v2', histogram_freq=0,
                  write_graph=True, write_images=False)
-mc = ModelCheckpoint('weights/char_v1-epoch-{epoch:02d}-loss-{loss:.4f}.hdf5',
+mc = ModelCheckpoint('weights/char_v2-epoch-{epoch:02d}-loss-{loss:.4f}.hdf5',
                      save_best_only=True, mode='min',
                      monitor='loss', verbose=1)
 model.fit(X, y, epochs=1000, batch_size=1024, callbacks=[tb, mc])
