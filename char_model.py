@@ -33,15 +33,15 @@ y = to_categorical(char_out, num_classes=len(chars))
 #%%
 
 
-def build_char_model(weights_path=''):
-    inps = Input(shape=(X.shape[1], X.shape[2]))
+def build_char_model(weights_path='', input_shape=(X.shape[1], X.shape[2]), output_shape=y.shape[1]):
+    inps = Input(shape=input_shape)
     x = CuDNNLSTM(256, return_sequences=True)(inps)
     x = Dropout(0.5)(x)
     x = CuDNNLSTM(256, return_sequences=True)(x)
     x = Dropout(0.5)(x)
     x = CuDNNLSTM(256)(x)
     x = Dropout(0.5)(x)
-    x = Dense(y.shape[1], activation='softmax')(x)
+    x = Dense(output_shape, activation='softmax')(x)
     model = Model(inps, x)
     if(weights_path):
         model.load_weights(weights_path)
@@ -61,8 +61,6 @@ mc = ModelCheckpoint('weights/char_v2-epoch-{epoch:02d}-loss-{loss:.4f}.hdf5',
 model.fit(X, y, epochs=1000, batch_size=1024, callbacks=[tb, mc])
 #%%
 # GENERATE TEXT
-# from keras.models import load_model
-# model = load_model('weights/char_v2-epoch-171-loss-0.1091.hdf5')
 for tmp in [float(i / 10) for i in range(1, 20)]:
     print(f'temperature = {tmp}')
     idx = np.random.randint(0, X.shape[0] - seq_length)
