@@ -38,7 +38,7 @@ padded_chars = pad_sequences(tokenized_chars, maxlen=MAX_CHAR_PER_WORD)
 X_ch = np.array([padded_chars[i:i+seq_length] for i in range(len(tokenized_chars)-seq_length)])
 X_w = np.array([tokenized_words[i:i+seq_length] for i in range(len(tokenized_words)-seq_length)])
 y = np.array([tokenized_words[i+seq_length] for i in range(len(tokenized_words)-seq_length)])
-#%%
+
 # create embedding_matrix
 def get_embedding(w2v):
     w2v_matrix = w2v.syn0
@@ -58,7 +58,7 @@ def build_word_char_model(weights_path='', input_shapes=[(seq_length, X_ch.shape
     char_embed = Bidirectional(CuDNNLSTM(256, return_sequences=True),
                                merge_mode='sum')(char_input)
 
-    word_input = Input(shape=input_shapes[0], name='words_in')
+    word_input = Input(shape=input_shapes[1], name='words_in')
     word_embed = get_embedding(w2v)(word_input)
 
     # NOTE consider doing this dynammically ( with a learnable G param)
