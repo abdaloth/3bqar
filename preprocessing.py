@@ -47,18 +47,24 @@ def clean_and_normalize(poem):
     return poem_normalized
 
 
-if __name__ == '__main__':
-    filename = 'data/poems.csv'
-    data = pd.read_csv(filename, encoding='utf-8')
+def main(src_file='data/poems.csv', output_file='data/raw_text.txt', author=''):
+    data = pd.read_csv(src_file, encoding='utf-8')
+    if(author):
+        data = data[data.author == author]
     data = data.drop_duplicates()
-    len(data)
     data = data[data.poem_text.notnull()]
     poems = data.poem_text.apply(lambda p: clean_and_normalize(p))
     poems = poems.tolist()
     poems = [p.split('\n') for p in poems]
-    poems = [[v for v in p if 0< len(v.split()) <= MAX_WORDS_PER_LINE] for p in poems]
-    poems = [[' '.join([w for w in v.split() if 0<len(w)< MAX_CHAR_PER_WORD]) for v in p] for p in poems]
+    poems = [[v for v in p if 0 < len(v.split()) <= MAX_WORDS_PER_LINE]
+             for p in poems]
+    poems = [[' '.join([w for w in v.split() if 0 < len(w) < MAX_CHAR_PER_WORD]
+                       ) for v in p] for p in poems]
     verses = list(chain.from_iterable(poems))
-    with open('data/raw_text.txt', 'w', encoding='utf8') as f:
+    with open(output_file, 'w', encoding='utf8') as f:
         raw_text = '\n'.join(verses)
         f.write(raw_text)
+
+
+if __name__ == '__main__':
+    main()
