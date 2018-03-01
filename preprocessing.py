@@ -16,10 +16,10 @@ whitespace_re = r'[^\S\n]'
 extension_re = r'ـ'
 # normalize alef
 alef_re = r'(آ|أ|إ|آ)'
-# normalize waw_hamzah
-waw_hamzah_re = r'(ؤ)'
-# normalize yaa_hamzah
-yaa_hamzah_re = r'(ئ)'
+# remove repeating phrases
+repeating_phrases_re = r'(\W|^)(.+)\s\2'
+# remove repeating chars
+repeating_chars_re = r'(.)\1{3,}'
 # normalize taa marbootah
 taa_marbootah_re = r'(ة)'
 
@@ -33,16 +33,13 @@ def clean_and_normalize(poem):
                              poem_normalized, flags=re.UNICODE)
     poem_normalized = re.sub(whitespace_re, ' ',
                              poem_normalized, flags=re.UNICODE)
-    # compact repetitive chars
-    poem_normalized = re.sub(r'(.)\1{3,}', r'\1',
+    poem_normalized = re.sub(repeating_chars_re, r'\1',
                              poem_normalized, flags=re.UNICODE)
     poem_normalized = re.sub(alef_re, 'ا',
                              poem_normalized, flags=re.UNICODE)
-    # poem_normalized = re.sub(waw_hamzah_re, 'و',
-    #                          poem_normalized, flags=re.UNICODE)
-    # poem_normalized = re.sub(yaa_hamzah_re, 'ي',
-    #                          poem_normalized, flags=re.UNICODE)
     poem_normalized = re.sub(taa_marbootah_re, 'ه',
+                             poem_normalized, flags=re.UNICODE)
+    poem_normalized = re.sub(repeating_phrases_re, r'\2',
                              poem_normalized, flags=re.UNICODE)
     return poem_normalized
 
@@ -53,10 +50,9 @@ def main(src_file='data/poems.csv', output_file='data/raw_text.txt', author=''):
         data = data[data.author == author]
     data = data.drop_duplicates()
     data = data[data.poem_text.notnull()]
-    poems = data.poem_text.apply(lambda p: clean_and_normalize(p))
-    poems = poems.tolist()
+    poems = data.poem_text.tolist()
     poems = [p.split('\n') for p in poems]
-    poems = [[v for v in p if 0 < len(v.split()) <= MAX_WORDS_PER_LINE]
+    poems = [[clean_and_normalize(v) for v in p if 0 < len(v.split()) <= MAX_WORDS_PER_LINE]
              for p in poems]
     poems = [[' '.join([w for w in v.split() if 0 < len(w) < MAX_CHAR_PER_WORD]
                        ) for v in p] for p in poems]
