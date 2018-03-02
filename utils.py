@@ -31,14 +31,14 @@ def index2word(index, w2v):
     return w2v.index2word[index - 1]
 
 
-def get_word_vector(file_path, verses=None):
+def get_word_vector(file_path, verses=None, max_vocab_size=None):
     # load or create and save word2vec model
     try:
         w2v = Word2Vec.load(file_path).wv
     except FileNotFoundError:
         verse_list = [v.split() for v in verses]
-        w2v = Word2Vec(verse_list, window=3, size=256, min_count=1,
-                       sg=1, iter=30, workers=8)
+        w2v = Word2Vec(verse_list, window=3, size=256,
+                       max_vocab_size=max_vocab_size, sg=1, iter=30, workers=8)
         w2v.save(file_path)
         w2v = Word2Vec.load(file_path).wv
     return w2v
